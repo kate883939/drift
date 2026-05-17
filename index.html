@@ -606,11 +606,11 @@
   <div class="compose">
     <textarea class="input" id="input" rows="4" placeholder="把它寫出來⋯⋯"></textarea>
     <div class="actions" id="actions">
-      <button class="btn" id="releaseBtn" onclick="window.doRelease && window.doRelease()">
+      <button class="btn" id="releaseBtn" type="button" onclick="return window.doRelease && window.doRelease()">
         <span data-i18n="release">釋放</span>
         <span class="sub">release</span>
       </button>
-      <button class="btn primary" id="keepBtn" onclick="window.doKeep && window.doKeep()">
+      <button class="btn primary" id="keepBtn" type="button" onclick="return window.doKeep && window.doKeep()">
         <span data-i18n="keep">保留</span>
         <span class="sub">keep</span>
       </button>
@@ -909,7 +909,11 @@ function loadKept() {
   }
 }
 function saveKept(list) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  } catch (e) {
+    try { console.warn('Unable to persist kept items:', e); } catch(_) {}
+  }
 }
 let kept = loadKept();
 
@@ -1063,6 +1067,19 @@ syncComposeState();
 // Release/Keep are handled via inline onclick -> window.doRelease / window.doKeep.
 
 //// ---------- Animations ----------
+function runElementAnimation(el, keyframes, options, onFinish) {
+  if (typeof el.animate === 'function') {
+    var animation = el.animate(keyframes, options);
+    animation.onfinish = onFinish;
+    return;
+  }
+  var lastFrame = keyframes[keyframes.length - 1];
+  Object.keys(lastFrame).forEach(function(prop) {
+    if (prop !== 'offset') el.style[prop] = lastFrame[prop];
+  });
+  setTimeout(onFinish, options.duration || 1000);
+}
+
 function releaseAnimation(text) {
   const el = document.createElement('div');
   el.className = 'drifting';
@@ -1075,7 +1092,7 @@ function releaseAnimation(text) {
   const driftX = (Math.random() - 0.5) * 120;
   const driftY = -window.innerHeight * 0.65;
   const rot = (Math.random() - 0.5) * 6;
-  el.animate([
+  runElementAnimation(el, [
     { transform: 'translate(0, 0) scale(1)', opacity: 1, filter: 'blur(0px)' },
     { transform: `translate(${driftX*0.4}px, ${driftY*0.4}px) scale(0.85)`,
       opacity: 0.7, filter: 'blur(1px)', offset: 0.5 },
@@ -1085,7 +1102,7 @@ function releaseAnimation(text) {
     duration: 6500,
     easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
     fill: 'forwards'
-  }).onfinish = () => el.remove();
+  }, () => el.remove());
 }
 
 function keepAnimation(text, lightId) {
@@ -1106,7 +1123,7 @@ function keepAnimation(text, lightId) {
     targetY = lightRect.top + lightRect.height / 2 - (rect.top + 20);
   }
 
-  el.animate([
+  runElementAnimation(el, [
     { transform: 'translate(0,0) scale(1)', opacity: 1, filter: 'blur(0)' },
     { transform: `translate(${targetX*0.6}px, ${targetY*0.6}px) scale(0.4)`,
       opacity: 0.6, filter: 'blur(1px)', offset: 0.7 },
@@ -1116,7 +1133,7 @@ function keepAnimation(text, lightId) {
     duration: 2200,
     easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
     fill: 'forwards'
-  }).onfinish = () => el.remove();
+  }, () => el.remove());
 }
 
 //// ---------- Archive panel ----------
@@ -1163,11 +1180,10 @@ function releaseKept(id) {
   ghost.style.transform = 'translate(-50%, -50%)';
   ghost.style.width = 'min(480px, 80vw)';
   document.body.appendChild(ghost);
-  ghost.animate([
+  runElementAnimation(ghost, [
     { opacity: 1, filter: 'blur(0)', transform: 'translate(-50%, -50%) scale(1)' },
     { opacity: 0, filter: 'blur(10px)', transform: 'translate(-50%, -180%) scale(0.6)' }
-  ], { duration: 4500, easing: 'ease-out', fill: 'forwards' })
-   .onfinish = () => ghost.remove();
+  ], { duration: 4500, easing: 'ease-out', fill: 'forwards' }, () => ghost.remove());
 }
 
 //// ---------- Settings panel + all interactions exposed on window ----------
@@ -1222,17 +1238,19 @@ window.closeArchive = function() {
 window.doRelease = function() {
   try {
     var text = input.value.trim();
-    if (!text) return;
+    if (!text) return false;
     releaseAnimation(text);
     input.value = '';
     syncComposeState();
+    return false;
   } catch (e) { try { console.error(e); } catch(_){} }
+  return false;
 };
 
 window.doKeep = function() {
   try {
     var text = input.value.trim();
-    if (!text) return;
+    if (!text) return false;
     var item = {
       id: 'k' + Date.now() + Math.random().toString(36).slice(2, 6),
       text: text,
@@ -1250,8 +1268,33 @@ window.doKeep = function() {
     keepAnimation(text, item.id);
     input.value = '';
     syncComposeState();
+    return false;
   } catch (e) { try { console.error(e); } catch(_){} }
+  return false;
 };
+
+function bindActionButton(id, handler) {
+  var button = document.getElementById(id);
+  if (!button) return;
+  var lastRun = 0;
+  var run = function(e) {
+    if (e && e.cancelable) e.preventDefault();
+    if (e) e.stopPropagation();
+    var now = Date.now();
+    if (now - lastRun < 350) return false;
+    lastRun = now;
+    syncComposeState();
+    handler();
+    return false;
+  };
+  button.addEventListener('click', run);
+  button.addEventListener('touchend', run, { passive: false });
+}
+
+safe(function() {
+  bindActionButton('releaseBtn', window.doRelease);
+  bindActionButton('keepBtn', window.doKeep);
+});
 
 // Name input is just an input event - bind via addEventListener (the field always exists)
 function safe(fn) { try { fn(); } catch (e) { try { console.error(e); } catch(_){} } }
