@@ -929,24 +929,46 @@ function fmtDate(ts) {
 
 //// ---------- Floating lights (synced with waves) ----------
 const lightsLayer = document.getElementById('lights');
-const lightEls = new Map(); // id -> { el, baseXPct, layerIdx, phase }
+const lightEls = new Map(); // id -> { el, baseXPct, layerIdx, phase, driftXPct, driftSpeed }
+
+function hashString(str) {
+  var h = 2166136261;
+  for (var i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function seededUnit(item, salt) {
+  var raw = [item.id, item.ts, item.text, salt].join('|');
+  return hashString(raw) / 4294967295;
+}
 
 function lightAnchorFor(item) {
-  // deterministic hash -> stable position per id
-  var h = 0;
-  for (var i = 0; i < item.id.length; i++) {
-    h = ((h << 5) - h + item.id.charCodeAt(i)) | 0;
-  }
-  var ah = Math.abs(h);
-  var r1 = (ah % 10000) / 10000;
-  var r2 = (Math.floor(ah / 10000) % 10000) / 10000;
-  var r3 = (Math.floor(ah / 100000000) % 10000) / 10000;
-  var baseXPct = 10 + r1 * 80;
-  var lowerLayerStart = Math.max(0, WAVE_LAYERS.length - 2);
+  // Seeded randomness keeps each saved thought stable but naturally scattered.
+  var r1 = seededUnit(item, 'x');
+  var r2 = seededUnit(item, 'layer');
+  var r3 = seededUnit(item, 'phase');
+  var r4 = seededUnit(item, 'drift-width');
+  var r5 = seededUnit(item, 'drift-speed');
+  var r6 = seededUnit(item, 'phase-two');
+  var r7 = seededUnit(item, 'bob');
+  var baseXPct = 8 + r1 * 84;
+  var lowerLayerStart = Math.max(0, WAVE_LAYERS.length - 3);
   var layerIdx = lowerLayerStart + Math.floor(r2 * (WAVE_LAYERS.length - lowerLayerStart));
   if (layerIdx >= WAVE_LAYERS.length) layerIdx = WAVE_LAYERS.length - 1;
   var phase = r3 * Math.PI * 2;
-  return { baseXPct: baseXPct, layerIdx: layerIdx, phase: phase };
+  return {
+    baseXPct: baseXPct,
+    layerIdx: layerIdx,
+    phase: phase,
+    phase2: r6 * Math.PI * 2,
+    driftXPct: 3 + r4 * 7,
+    driftSpeed: 0.12 + r5 * 0.18,
+    bobAmp: 3 + r7 * 4,
+    bobSpeed: 0.9 + r5 * 0.8
+  };
 }
 
 function renderLights() {
@@ -981,7 +1003,12 @@ function renderLights() {
           el: el,
           baseXPct: a.baseXPct,
           layerIdx: a.layerIdx,
-          phase: a.phase
+          phase: a.phase,
+          phase2: a.phase2,
+          driftXPct: a.driftXPct,
+          driftSpeed: a.driftSpeed,
+          bobAmp: a.bobAmp,
+          bobSpeed: a.bobSpeed
         });
       }
     });
@@ -996,10 +1023,14 @@ function renderLights() {
 function updateLightsPosition() {
   if (!lightEls.size || !W) return;
   lightEls.forEach(function(info) {
-    var x = W * info.baseXPct / 100;
-    var layerIdx = Math.max(info.layerIdx, Math.max(0, WAVE_LAYERS.length - 2));
+    var driftPct =
+      Math.sin(waveTime * info.driftSpeed + info.phase) * info.driftXPct
+      + Math.sin(waveTime * info.driftSpeed * 0.43 + info.phase2) * info.driftXPct * 0.45;
+    var xPct = Math.max(7, Math.min(93, info.baseXPct + driftPct));
+    var x = W * xPct / 100;
+    var layerIdx = Math.max(info.layerIdx, Math.max(0, WAVE_LAYERS.length - 3));
     var layer = WAVE_LAYERS[layerIdx];
-    var bob = Math.sin(waveTime * 1.2 + info.phase) * 4;
+    var bob = Math.sin(waveTime * info.bobSpeed + info.phase) * info.bobAmp;
     var y = waveY(x, layer) - 12 + bob;
     var avoidRect = getLightAvoidRect();
     if (avoidRect && x > avoidRect.left && x < avoidRect.right && y > avoidRect.top && y < avoidRect.bottom) {
