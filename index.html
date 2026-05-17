@@ -799,10 +799,10 @@ const ctx = canvas.getContext('2d');
 let W, H, DPR;
 
 const WAVE_LAYERS = [
-  { yRatio: 0.50, amp: 8,  freq: 0.012, speed: 0.012, alpha: 0.08, stroke: 0.16 },
-  { yRatio: 0.62, amp: 12, freq: 0.009, speed: 0.018, alpha: 0.11, stroke: 0.18 },
-  { yRatio: 0.74, amp: 16, freq: 0.007, speed: 0.024, alpha: 0.14, stroke: 0.20 },
-  { yRatio: 0.86, amp: 22, freq: 0.005, speed: 0.030, alpha: 0.16, stroke: 0.22 },
+  { yRatio: 0.48, amp: 9,  freq: 0.012, speed: 0.75, drift: 16, alpha: 0.08, stroke: 0.20, lineWidth: 1 },
+  { yRatio: 0.60, amp: 13, freq: 0.010, speed: 0.95, drift: 24, alpha: 0.11, stroke: 0.24, lineWidth: 1 },
+  { yRatio: 0.72, amp: 18, freq: 0.008, speed: 1.15, drift: 30, alpha: 0.14, stroke: 0.28, lineWidth: 1.2 },
+  { yRatio: 0.84, amp: 24, freq: 0.006, speed: 1.35, drift: 40, alpha: 0.18, stroke: 0.32, lineWidth: 1.4 },
 ];
 
 function resize() {
@@ -819,40 +819,85 @@ resize();
 window.addEventListener('resize', () => { resize(); });
 
 let waveTime = 0;
+let lastWaveFrame = performance.now();
 
-function waveY(x, layer) {
+function waveY(x, layer, offset) {
+  var phase = waveTime * layer.speed + (offset || 0);
+  var driftingX = x + waveTime * layer.drift;
   return H * layer.yRatio
-       + Math.sin(x * layer.freq + waveTime * layer.speed) * layer.amp
-       + Math.sin(x * layer.freq * 1.7 + waveTime * layer.speed * 1.3) * layer.amp * 0.4;
+       + Math.sin(driftingX * layer.freq + phase) * layer.amp
+       + Math.sin(driftingX * layer.freq * 1.9 - phase * 0.7) * layer.amp * 0.45
+       + Math.sin(driftingX * layer.freq * 0.45 + phase * 0.35) * layer.amp * 0.25;
 }
 
-function drawSea() {
-  ctx.clearRect(0, 0, W, H);
-  WAVE_LAYERS.forEach((L) => {
-    ctx.beginPath();
-    ctx.moveTo(0, H);
-    for (let x = 0; x <= W; x += 4) {
-      ctx.lineTo(x, waveY(x, L));
-    }
-    ctx.lineTo(W, H);
-    ctx.closePath();
-    ctx.fillStyle = `rgba(207, 228, 238, ${L.alpha})`;
-    ctx.fill();
+function drawWaveRibbon(layer, offset, fillAlpha, strokeAlpha) {
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  for (let x = 0; x <= W; x += 3) {
+    ctx.lineTo(x, waveY(x, layer, offset));
+  }
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fillStyle = `rgba(207, 228, 238, ${fillAlpha})`;
+  ctx.fill();
 
+  ctx.beginPath();
+  ctx.moveTo(0, waveY(0, layer, offset));
+  for (let x = 3; x <= W; x += 3) {
+    ctx.lineTo(x, waveY(x, layer, offset));
+  }
+  ctx.strokeStyle = `rgba(234, 243, 247, ${strokeAlpha})`;
+  ctx.lineWidth = layer.lineWidth;
+  ctx.stroke();
+}
+
+function drawSurfaceRipples() {
+  var rippleCount = Math.max(7, Math.floor(H / 120));
+  for (let i = 0; i < rippleCount; i++) {
+    var yBase = H * (0.50 + i * 0.065);
+    var width = W * (0.18 + (i % 3) * 0.09);
+    var start = ((waveTime * (26 + i * 5)) + i * W * 0.19) % (W + width) - width;
+    var alpha = 0.08 + i * 0.012;
     ctx.beginPath();
-    ctx.moveTo(0, waveY(0, L));
-    for (let x = 4; x <= W; x += 4) {
-      ctx.lineTo(x, waveY(x, L));
+    for (let x = 0; x <= width; x += 6) {
+      var px = start + x;
+      var py = yBase
+        + Math.sin((x * 0.035) + waveTime * (1.2 + i * 0.08)) * (3 + i * 0.35)
+        + Math.sin((px * 0.018) - waveTime * 0.8) * 2;
+      if (x === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
     }
-    ctx.strokeStyle = `rgba(234, 243, 247, ${L.stroke})`;
+    var gradient = ctx.createLinearGradient(start, 0, start + width, 0);
+    gradient.addColorStop(0, 'rgba(234, 243, 247, 0)');
+    gradient.addColorStop(0.5, `rgba(234, 243, 247, ${alpha})`);
+    gradient.addColorStop(1, 'rgba(234, 243, 247, 0)');
+    ctx.strokeStyle = gradient;
     ctx.lineWidth = 1;
     ctx.stroke();
+  }
+}
+
+function drawSea(now) {
+  var delta = Math.min((now - lastWaveFrame) / 1000, 0.05);
+  lastWaveFrame = now;
+  waveTime += delta;
+  ctx.clearRect(0, 0, W, H);
+  var glow = ctx.createLinearGradient(0, H * 0.42, 0, H);
+  glow.addColorStop(0, 'rgba(207, 228, 238, 0)');
+  glow.addColorStop(0.45, 'rgba(207, 228, 238, 0.035)');
+  glow.addColorStop(1, 'rgba(207, 228, 238, 0.12)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, H * 0.42, W, H * 0.58);
+
+  WAVE_LAYERS.forEach((L) => {
+    drawWaveRibbon(L, 0, L.alpha, L.stroke);
+    drawWaveRibbon(L, Math.PI * 0.72, L.alpha * 0.35, L.stroke * 0.45);
   });
-  waveTime += 1;
+  drawSurfaceRipples();
   updateLightsPosition();
   requestAnimationFrame(drawSea);
 }
-drawSea();
+requestAnimationFrame(drawSea);
 
 //// ---------- Kept storage ----------
 const STORAGE_KEY = 'drift.kept.v1';
