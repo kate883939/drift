@@ -292,7 +292,7 @@
   .lights-layer {
     position: fixed;
     inset: 0;
-    z-index: 5;
+    z-index: 12;
     pointer-events: none;
   }
   .light {
@@ -942,7 +942,8 @@ function lightAnchorFor(item) {
   var r2 = (Math.floor(ah / 10000) % 10000) / 10000;
   var r3 = (Math.floor(ah / 100000000) % 10000) / 10000;
   var baseXPct = 10 + r1 * 80;
-  var layerIdx = Math.floor(r2 * WAVE_LAYERS.length);
+  var lowerLayerStart = Math.max(0, WAVE_LAYERS.length - 2);
+  var layerIdx = lowerLayerStart + Math.floor(r2 * (WAVE_LAYERS.length - lowerLayerStart));
   if (layerIdx >= WAVE_LAYERS.length) layerIdx = WAVE_LAYERS.length - 1;
   var phase = r3 * Math.PI * 2;
   return { baseXPct: baseXPct, layerIdx: layerIdx, phase: phase };
@@ -996,12 +997,31 @@ function updateLightsPosition() {
   if (!lightEls.size || !W) return;
   lightEls.forEach(function(info) {
     var x = W * info.baseXPct / 100;
-    var layer = WAVE_LAYERS[info.layerIdx];
-    var bob = Math.sin(waveTime * 0.015 + info.phase) * 4;
+    var layerIdx = Math.max(info.layerIdx, Math.max(0, WAVE_LAYERS.length - 2));
+    var layer = WAVE_LAYERS[layerIdx];
+    var bob = Math.sin(waveTime * 1.2 + info.phase) * 4;
     var y = waveY(x, layer) - 12 + bob;
+    var avoidRect = getLightAvoidRect();
+    if (avoidRect && x > avoidRect.left && x < avoidRect.right && y > avoidRect.top && y < avoidRect.bottom) {
+      var belowInputY = avoidRect.bottom + 34;
+      var lowestSafeY = H - 112;
+      y = belowInputY <= lowestSafeY ? belowInputY : avoidRect.top - 42;
+    }
     info.el.style.left = x + 'px';
     info.el.style.top = y + 'px';
   });
+}
+
+function getLightAvoidRect() {
+  var composeEl = document.querySelector('.compose');
+  if (!composeEl) return null;
+  var rect = composeEl.getBoundingClientRect();
+  return {
+    left: Math.max(0, rect.left - 36),
+    right: Math.min(W, rect.right + 36),
+    top: Math.max(0, rect.top - 36),
+    bottom: Math.min(H, rect.bottom + 118)
+  };
 }
 
 //// ---------- Bubble ----------
