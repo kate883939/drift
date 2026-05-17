@@ -216,6 +216,12 @@
     transform: translateY(0);
     pointer-events: auto;
   }
+  .compose.has-text .actions,
+  textarea.input:not(:placeholder-shown) + .actions {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
 
   .btn {
     font-family: -apple-system, 'PingFang TC', 'Helvetica Neue', sans-serif;
@@ -793,10 +799,10 @@ const ctx = canvas.getContext('2d');
 let W, H, DPR;
 
 const WAVE_LAYERS = [
-  { yRatio: 0.55, amp: 6,  freq: 0.012, speed: 0.012, alpha: 0.06 },
-  { yRatio: 0.65, amp: 9,  freq: 0.009, speed: 0.018, alpha: 0.08 },
-  { yRatio: 0.75, amp: 14, freq: 0.007, speed: 0.024, alpha: 0.10 },
-  { yRatio: 0.85, amp: 18, freq: 0.005, speed: 0.030, alpha: 0.13 },
+  { yRatio: 0.50, amp: 8,  freq: 0.012, speed: 0.012, alpha: 0.08, stroke: 0.16 },
+  { yRatio: 0.62, amp: 12, freq: 0.009, speed: 0.018, alpha: 0.11, stroke: 0.18 },
+  { yRatio: 0.74, amp: 16, freq: 0.007, speed: 0.024, alpha: 0.14, stroke: 0.20 },
+  { yRatio: 0.86, amp: 22, freq: 0.005, speed: 0.030, alpha: 0.16, stroke: 0.22 },
 ];
 
 function resize() {
@@ -832,6 +838,15 @@ function drawSea() {
     ctx.closePath();
     ctx.fillStyle = `rgba(207, 228, 238, ${L.alpha})`;
     ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(0, waveY(0, L));
+    for (let x = 4; x <= W; x += 4) {
+      ctx.lineTo(x, waveY(x, L));
+    }
+    ctx.strokeStyle = `rgba(234, 243, 247, ${L.stroke})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
   });
   waveTime += 1;
   updateLightsPosition();
@@ -986,12 +1001,19 @@ function escapeHTML(s) {
 const input = document.getElementById('input');
 const actions = document.getElementById('actions');
 const prompt = document.getElementById('prompt');
+const compose = document.querySelector('.compose');
 
-input.addEventListener('input', () => {
+function syncComposeState() {
   const hasText = input.value.trim().length > 0;
   actions.classList.toggle('visible', hasText);
+  if (compose) compose.classList.toggle('has-text', hasText);
   prompt.style.opacity = hasText ? 0 : 0.6;
+}
+
+['input', 'change', 'keyup', 'compositionend', 'focus', 'blur'].forEach(function(eventName) {
+  input.addEventListener(eventName, syncComposeState);
 });
+syncComposeState();
 
 // Release/Keep are handled via inline onclick -> window.doRelease / window.doKeep.
 
@@ -1158,8 +1180,7 @@ window.doRelease = function() {
     if (!text) return;
     releaseAnimation(text);
     input.value = '';
-    actions.classList.remove('visible');
-    prompt.style.opacity = 0.6;
+    syncComposeState();
   } catch (e) { try { console.error(e); } catch(_){} }
 };
 
@@ -1183,8 +1204,7 @@ window.doKeep = function() {
     }
     keepAnimation(text, item.id);
     input.value = '';
-    actions.classList.remove('visible');
-    prompt.style.opacity = 0.6;
+    syncComposeState();
   } catch (e) { try { console.error(e); } catch(_){} }
 };
 
