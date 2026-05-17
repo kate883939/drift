@@ -1003,9 +1003,9 @@ function updateLightsPosition() {
     var y = waveY(x, layer) - 12 + bob;
     var avoidRect = getLightAvoidRect();
     if (avoidRect && x > avoidRect.left && x < avoidRect.right && y > avoidRect.top && y < avoidRect.bottom) {
-      var belowInputY = avoidRect.bottom + 34;
+      var seaBelowInputY = avoidRect.bottom + 34;
       var lowestSafeY = H - 112;
-      y = belowInputY <= lowestSafeY ? belowInputY : avoidRect.top - 42;
+      y = Math.min(Math.max(y, seaBelowInputY), lowestSafeY) + bob * 0.35;
     }
     info.el.style.left = x + 'px';
     info.el.style.top = y + 'px';
@@ -1020,7 +1020,7 @@ function getLightAvoidRect() {
     left: Math.max(0, rect.left - 36),
     right: Math.min(W, rect.right + 36),
     top: Math.max(0, rect.top - 36),
-    bottom: Math.min(H, rect.bottom + 118)
+    bottom: Math.min(H, rect.bottom + 24)
   };
 }
 
